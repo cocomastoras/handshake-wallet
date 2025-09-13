@@ -1,0 +1,1184 @@
+const {
+  time,
+  loadFixture, reset
+} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
+const { expect } = require("chai");
+const hre = require('hardhat');
+const { ethers } = hre;
+const { Currency, Token, WETH9 } = require('@uniswap/sdk-core');
+const {toBigInt} = require("ethers");
+const TOKEN_ABI = [
+    {
+        "constant": true,
+        "inputs": [],
+        "name": "name",
+        "outputs": [
+            {
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            {
+                "name": "_spender",
+                "type": "address"
+            },
+            {
+                "name": "_value",
+                "type": "uint256"
+            }
+        ],
+        "name": "approve",
+        "outputs": [
+            {
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "constant": true,
+        "inputs": [],
+        "name": "totalSupply",
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            {
+                "name": "_from",
+                "type": "address"
+            },
+            {
+                "name": "_to",
+                "type": "address"
+            },
+            {
+                "name": "_value",
+                "type": "uint256"
+            }
+        ],
+        "name": "transferFrom",
+        "outputs": [
+            {
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "constant": true,
+        "inputs": [],
+        "name": "decimals",
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint8"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "constant": true,
+        "inputs": [
+            {
+                "name": "_owner",
+                "type": "address"
+            }
+        ],
+        "name": "balanceOf",
+        "outputs": [
+            {
+                "name": "balance",
+                "type": "uint256"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "constant": true,
+        "inputs": [],
+        "name": "symbol",
+        "outputs": [
+            {
+                "name": "",
+                "type": "string"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "constant": false,
+        "inputs": [
+            {
+                "name": "_to",
+                "type": "address"
+            },
+            {
+                "name": "_value",
+                "type": "uint256"
+            }
+        ],
+        "name": "transfer",
+        "outputs": [
+            {
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "constant": true,
+        "inputs": [
+            {
+                "name": "_owner",
+                "type": "address"
+            },
+            {
+                "name": "_spender",
+                "type": "address"
+            }
+        ],
+        "name": "allowance",
+        "outputs": [
+            {
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "payable": false,
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "payable": true,
+        "stateMutability": "payable",
+        "type": "fallback"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "name": "owner",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "name": "spender",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "name": "value",
+                "type": "uint256"
+            }
+        ],
+        "name": "Approval",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "name": "from",
+                "type": "address"
+            },
+            {
+                "indexed": true,
+                "name": "to",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "name": "value",
+                "type": "uint256"
+            }
+        ],
+        "name": "Transfer",
+        "type": "event"
+    }
+]
+const ERROR_ABI = [
+	{
+		"inputs": [],
+		"name": "V2TooLittleReceived",
+		"type": "error"
+	},
+	{
+		"inputs": [],
+		"name": "V3TooLittleReceived",
+		"type": "error"
+	}
+]
+const WETH = new Token(33139, '0x48b62137EdfA95a428D35C09E44256a739F6B557', 18, 'WAPE', 'WAPE');
+const TOKENS = [
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+    new Token(33139, '0xFC2744A6Db0f97c606Df786b97255DFf6F27E320', 18, "CURTIS", 'CURTIS'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "BERT", 'BERT'),
+    new Token(33139, '0xF1869755FB933D8878F49A68A52802A83F46068F', 18, "APEPE", 'APEPE'),
+    new Token(33139, '0x2C7A31a9b44Cd9c485314008B3F638758E6A8470', 18, "BLUE", 'BLUE'),
+    new Token(33139, '0x493a7A762Db6bb2A1CdC526697d37Ff9d32b0473', 18, "BORED", 'BORED'),
+    new Token(33139, '0x70bEe7Ca89300e9450Ecb6C083387132995152dd', 18, "CIF", 'CIF'),
+    new Token(33139, '0x6d78cc7CD6A6aa2D6760F2BCD66EA9658B21aD91', 18, "DOOKEY", 'DOOKEY'),
+    new Token(33139, '0xfC7B0bAdb1404412a747bC9bb6232E25098bE303', 18, "APE", 'APE'),
+    new Token(33139, '0xcA6094A1E211A9cf35B2a737896B4cA5A75ba897', 18, "GARY", 'GARY'),
+    new Token(33139, '0xf8Efb9FeBF77d265b8b6Cb5DE6Dd0D9dC5591856', 18, "TRIP", 'TRIP'),
+    new Token(33139, '0x0cB2424d147BeE383CdcD864e0D7139D78f0f717', 18, "POA", 'POA'),
+    new Token(33139, '0xB0a563dDd67237E1c8a0995C432d879fA3ecd6FE', 18, "MURTIS", 'MURTIS'),
+    new Token(33139, '0xa1E120D1Ab13B20Cb5D5B61fa6dC36f2a7Cf8Fa2', 18, "ESC", 'ESC'),
+    new Token(33139, '0xF6C98B0a65c62bFe33d269A2F2a50Cda3710A1C5', 18, "BIDX500", 'BIDX500'),
+]
+
+async function deployRouter() {
+    await reset("https://apechain-mainnet.g.alchemy.com/v2/XDK3x0j1vdMqtrHCcDUbyo6qAvWB1Mlf", 1060340)
+    const [owner, feeSink, user] = await ethers.getSigners();
+    const ArbOwnerPublic_CONTRACT = "0x000000000000000000000000000000000000006b";
+    const YieldMock = await ethers.getContractFactory("ArbOwnerPublic");
+    const yieldMock = await YieldMock.connect(owner).deploy();
+    const code = await hre.ethers.provider.getCode(await yieldMock.getAddress())
+    await ethers.provider.send("hardhat_setCode", [ArbOwnerPublic_CONTRACT, code]);
+
+    // Contracts are deployed using the first signer/account by default
+    const Router = await ethers.getContractFactory('RouterCamelot')
+    const router = await Router.connect(owner).deploy(await owner.getAddress(), await feeSink.getAddress(), 10000, 10000)
+    const tokens = TOKENS.map(tk => {
+        return new ethers.Contract(tk.address, TOKEN_ABI, owner)
+    })
+    return {router, owner, feeSink, user, tokens};
+}
+async function getOptimalPath(routerContract, tokenAddress, amountIn, flag, slippage) {
+   if (flag === 0) {
+    return await routerContract.getOptimalPathBuy.staticCall(tokenAddress, amountIn, slippage).catch({})
+  } else {
+    return await routerContract.getOptimalPathSell.staticCall(tokenAddress, amountIn, slippage).catch({})
+  }
+}
+async function sellNativeForToken(routerContract, token, amountIn, slippage, account){
+    const quote = await getOptimalPath(routerContract, token, amountIn, 0, slippage)
+    const commands = '0x00'
+    const signer = routerContract.connect(account)
+    const txn = await signer.sellNativeForToken(token, quote[1], quote[0], quote[2], commands, {value: amountIn})
+    const rsp = await txn.wait();
+    return rsp['hash']
+}
+async function sellNativeForTokenReturnTxn(routerContract, token, amountIn, slippage, account){
+    const quote = await getOptimalPath(routerContract, token, amountIn, 0, slippage)
+    let commands = ''
+    if(quote[0] === 0n) {
+      commands = '0x0b08'
+    } else {
+      commands = '0x0b00'
+    }
+    const signer = routerContract.connect(account)
+    return await signer.sellNativeForToken(token, quote[1], quote[0], quote[2], commands, {value: amountIn})
+}
+async function sellNativeForTokenWithoutQuote(routerContract, token, amountIn, slippage, account, quote){
+    let commands = ''
+    if(quote[0] === 0n) {
+      commands = '0x0b08'
+    } else {
+      commands = '0x0b00'
+    }
+    const signer = routerContract.connect(account)
+    const txn = await signer.sellNativeForToken(token, quote[1], quote[0], quote[2], commands, {value: amountIn})
+    const rsp = await txn.wait();
+    return rsp['hash']
+}
+async function sellNativeForTokenMalformedVersion(routerContract, token, amountIn, slippage, account){
+    const quote = await getOptimalPath(routerContract, token, amountIn, 0, slippage)
+    let commands = ''
+    if(quote[0] === 0n) {
+      commands = '0x0b08'
+    } else {
+      commands = '0x0b00'
+    }
+    const signer = routerContract.connect(account)
+    const txn = await signer.sellNativeForToken(token, quote[1], 2, quote[2], commands, {value: amountIn})
+    const rsp = await txn.wait();
+    return rsp['hash']
+}
+async function sellTokenForNative(tokenContract, routerContract, amountIn, slippage, account){
+    let signer = tokenContract.connect(account)
+    const appTxn = await signer.approve(await routerContract.getAddress(), amountIn)
+    await appTxn.wait()
+    const quote = await getOptimalPath(routerContract, await tokenContract.getAddress(), amountIn, 1, slippage)
+    let commands = '0x00';
+    signer = routerContract.connect(account)
+    const txn = await signer.sellTokenForNative(await tokenContract.getAddress(), amountIn, quote[1], quote[0], quote[2], commands)
+    const rsp = await txn.wait();
+    return rsp['hash']
+}
+async function sellTokenForNativeWithoutQuote(tokenContract, routerContract, amountIn, slippage, account, quote){
+    let signer = tokenContract.connect(account)
+    const appTxn = await signer.approve(await routerContract.getAddress(), amountIn)
+    await appTxn.wait()
+    let commands = '';
+    if(quote[0] === 0n) {
+      commands = '0x08'
+    } else {
+      commands = '0x00'
+    }
+    signer = routerContract.connect(account)
+    const txn = await signer.sellTokenForNative(await tokenContract.getAddress(), amountIn, quote[1], quote[0], quote[2], commands)
+    const rsp = await txn.wait();
+    return rsp['hash']
+}
+async function sellTokenForNativeMalformedVersion(tokenContract, routerContract, amountIn, slippage, account){
+    let signer = tokenContract.connect(account)
+    const appTxn = await signer.approve(await routerContract.getAddress(), amountIn)
+    await appTxn.wait()
+    const quote = await getOptimalPath(routerContract, await tokenContract.getAddress(), amountIn, 1, slippage)
+    let commands = '';
+    if(quote[0] === 0n) {
+      commands = '0x08'
+    } else {
+      commands = '0x00'
+    }
+    signer = routerContract.connect(account)
+    const txn = await signer.sellTokenForNative(await tokenContract.getAddress(), amountIn, quote[1], 2, quote[2], commands)
+    const rsp = await txn.wait();
+    return rsp['hash']
+}
+
+describe("Trading Camelot", function () {
+    it('should get optimal path buy', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        for (let i=0; i<10;i++) {
+            const rsp = await getOptimalPath(router, await tokens[i].getAddress(),  ethers.parseEther('1000'), 0 , 10000)
+            console.log(rsp)
+        }
+    }).timeout(10000000000000000000000000000000);
+    it('should get optimal path sell', async function(){
+       const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+       } = await loadFixture(deployRouter);
+       for (let i=0; i<10;i++) {
+           const rsp = await getOptimalPath(router, await tokens[i].getAddress(), 100000n * 10n**toBigInt(TOKENS[i].decimals), 1 , 10000)
+           console.log(rsp)
+       }
+    }).timeout(10000000000000000000000000000000);
+    it('executes swaps for each token in the list', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        for (let i=0; i<14;i++) {
+            await sellNativeForToken(router, await tokens[i].getAddress(), ethers.parseEther('100'), 900000, user)
+            const balance = await tokens[i].balanceOf(await user.getAddress())
+            await sellTokenForNative(tokens[i], router, balance, 100000, user)
+        }
+    }).timeout(10000000000000000000000000000000);
+    it('should revert if slippage reached v3 on buy', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        let quote = await getOptimalPath(router, await tokens[0].getAddress(), ethers.parseEther('1000'), 0, 10000)
+        quote = [1n, quote[1], 100n, quote[3]]
+        expect(quote[0]).equal(1n);
+        await expect(sellNativeForTokenWithoutQuote(router, await tokens[0].getAddress(), ethers.parseEther('100'), 10000, owner, quote)).revertedWith('Too little received')
+        }).timeout(10000000000000000000000000000000);
+    it('should revert if slippage reached v2 on buy', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        const quote = await getOptimalPath(router, await tokens[0].getAddress(), ethers.parseEther('1000'), 0, 10000)
+        await expect(sellNativeForTokenWithoutQuote(router, await tokens[0].getAddress(), ethers.parseEther('100'), 10000, owner, quote)).revertedWith('CamelotRouter: INSUFFICIENT_OUTPUT_AMOUNT')
+        }).timeout(10000000000000000000000000000000);
+    it('should revert if slippage reached v3 on sell', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await sellNativeForToken(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)
+        const balance = await tokens[0].balanceOf(await user.getAddress())
+        let quote = await getOptimalPath(router, await tokens[0].getAddress(), balance, 1, 10000)
+        quote = [1n, quote[1], 100n, quote[3]]
+        await expect(sellTokenForNativeWithoutQuote(tokens[0], router, balance/2n, 10000, user, quote)).revertedWith('Too little received')
+        }).timeout(10000000000000000000000000000000);
+    it('should revert if slippage reached v2 on sell', async function(){
+        // token index 0
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await sellNativeForToken(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)
+        const balance = await tokens[0].balanceOf(await user.getAddress())
+        const quote = await getOptimalPath(router, await tokens[0].getAddress(), balance, 1, 10000)
+        await expect(sellTokenForNativeWithoutQuote(tokens[0], router, balance/2n, 10000, user, quote)).revertedWith('CamelotRouter: INSUFFICIENT_OUTPUT_AMOUNT')
+        }).timeout(10000000000000000000000000000000);
+    it('should revert if not valid version passed on buy', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await expect(sellNativeForTokenMalformedVersion(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)).revertedWithCustomError(router, 'InvalidVersion()')
+        }).timeout(10000000000000000000000000000000);
+    it('should revert if not valid version passed on sell', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await sellNativeForToken(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)
+        const balance = await tokens[0].balanceOf(await user.getAddress())
+        await expect(sellTokenForNativeMalformedVersion(tokens[0], router, balance, 700000, user)).revertedWithCustomError(router, 'InvalidVersion()')
+        }).timeout(10000000000000000000000000000000);
+    it('returns info for a bunch of tokens', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        const addresses = TOKENS.map(token => {return token.address})
+        const rsp = await router.fetchTokensInfo(addresses.slice(0, 500))
+        console.log(rsp.length)
+    }).timeout(10000000000000000000000000000000);
+    it('returns info for a single token', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        const address = TOKENS[0].address
+        const rsp = await router.fetchTokenInfo(address)
+        console.log(rsp)
+    }).timeout(10000000000000000000000000000000);
+    it('sends contract balance to fee sink', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        for (let i=0; i<10;i++) {
+            await sellNativeForToken(router, await tokens[i].getAddress(), ethers.parseEther('500'), 700000, user)
+            const balance = await tokens[i].balanceOf(await user.getAddress())
+            await sellTokenForNative(tokens[i], router, balance, 700000, user)
+        }
+        const balancePre = await ethers.provider.getBalance(await feeSink.getAddress())
+        await router.withdrawFees()
+        const balanceAfter = await ethers.provider.getBalance(await feeSink.getAddress())
+        expect(balanceAfter > balancePre)
+    }).timeout(10000000000000000000000000000000);
+    it('should have 0 trading fees if token is whitelisted', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await router.addToTokenAllowlist([await tokens[0].getAddress()])
+        await expect(sellNativeForTokenReturnTxn(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)).to.emit(
+            router, "SwapExecuted"
+        ).withArgs(
+            await user.getAddress(), WETH.address, await tokens[0].getAddress(), ethers.parseEther('500'), 68327489607784417016223n, 0, 0, 0
+        )
+    }).timeout(10000000000000000000000000000000);
+    it('should have 0 trading fees if user is whitelisted', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await router.addToAllowlist([await user.getAddress()])
+        await expect(sellNativeForTokenReturnTxn(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)).to.emit(
+            router, "SwapExecuted"
+        ).withArgs(
+            await user.getAddress(), WETH.address, await tokens[0].getAddress(), ethers.parseEther('500'), 68327489607784417016223n, 0, 0, 0
+        )
+    }).timeout(10000000000000000000000000000000);
+    it('should have trading fees if token is not whitelisted', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await expect(sellNativeForTokenReturnTxn(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)).to.emit(
+            router, "SwapExecuted"
+        ).withArgs(
+            await user.getAddress(), WETH.address, await tokens[0].getAddress(), ethers.parseEther('500'), 67560936988019873750395n, 0, 0, ethers.parseEther('5')
+        )
+    }).timeout(10000000000000000000000000000000);
+    it('should revert if contract frozen', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await router.freezeContract()
+        await expect(sellNativeForTokenReturnTxn(router, await tokens[0].getAddress(), ethers.parseEther('1'), 100000, user)).revertedWith('CF')
+    }).timeout(10000000000000000000000000000000);
+    it('should revert if user denylisted', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        await router.addToDenylist([await user.getAddress()])
+        await expect(sellNativeForTokenReturnTxn(router, await tokens[0].getAddress(), ethers.parseEther('1'), 100000, user)).revertedWith('DL')
+    }).timeout(10000000000000000000000000000000);
+    it('sends contract token balance to fee sink', async function(){
+        const {
+            router,
+            owner,
+            feeSink,
+            user,
+            tokens
+        } = await loadFixture(deployRouter);
+        const buyTxn = await sellNativeForToken(router, await tokens[0].getAddress(), ethers.parseEther('500'), 700000, user)
+        const balance = await tokens[0].balanceOf(await user.getAddress())
+        await tokens[0].connect(user).transfer(await router.getAddress(), balance)
+        await router.withdrawToken([await tokens[0].getAddress()])
+        expect(await tokens[0].balanceOf(await feeSink.getAddress())).eq(balance)
+    }).timeout(10000000000000000000000000000000);
+});
